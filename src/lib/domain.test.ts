@@ -92,6 +92,17 @@ describe("recorrências", () => {
     ]);
     expect(new Set([...keys, ...keys]).size).toBe(3);
   });
+  it("gera uma ocorrência de seis em seis meses", () => {
+    const keys = occurrenceKeys(
+      { ...rule, id: "insurance", frequency: "semiannual" },
+      "2027-03-31",
+    );
+    expect(keys).toEqual([
+      "insurance:2026-01-01",
+      "insurance:2026-07-01",
+      "insurance:2027-01-01",
+    ]);
+  });
 });
 describe("CSV", () => {
   it("lê ponto e vírgula, aspas, data PT e vírgula decimal", () => {

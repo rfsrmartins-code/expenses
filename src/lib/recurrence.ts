@@ -5,7 +5,13 @@ export const occurrenceKeys = (rule: Recurrence, through: string) => {
   let d = startOfMonth(parseISO(rule.start_date));
   const end = startOfMonth(parseISO(through));
   const step =
-    rule.frequency === "monthly" ? 1 : rule.frequency === "quarterly" ? 3 : 12;
+    rule.frequency === "monthly"
+      ? 1
+      : rule.frequency === "quarterly"
+        ? 3
+        : rule.frequency === "semiannual"
+          ? 6
+          : 12;
   while (d <= end && (!rule.end_date || d <= parseISO(rule.end_date))) {
     out.push(`${rule.id}:${format(d, "yyyy-MM-01")}`);
     d = addMonths(d, step);

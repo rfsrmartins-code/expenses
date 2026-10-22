@@ -189,7 +189,9 @@ export default function RecurringPage({
                   ? "Mensal"
                   : r.frequency === "quarterly"
                     ? "Trimestral"
-                    : "Anual"}{" "}
+                    : r.frequency === "semiannual"
+                      ? "Semestral"
+                      : "Anual"}{" "}
                 · dia {r.due_day} · {eur(r.estimated_cents)}
               </span>
               <button
@@ -315,6 +317,7 @@ function RuleModal({
             <select name="frequency">
               <option value="monthly">Mensal</option>
               <option value="quarterly">Trimestral</option>
+              <option value="semiannual">Semestral (de 6 em 6 meses)</option>
               <option value="yearly">Anual</option>
             </select>
           </label>
