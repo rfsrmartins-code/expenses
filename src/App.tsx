@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import {
   ArrowDownRight,
@@ -155,9 +155,9 @@ function useData() {
           movements: demoMovements,
         },
   );
-  const [loading, setLoading] = useState(configured);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const reload = async () => {
+  const reload = useCallback(async () => {
     if (!configured) return;
     setLoading(true);
     const [m, a, c, v] = await Promise.all([
@@ -179,9 +179,6 @@ function useData() {
         movements: v.data as Movement[],
       });
     setLoading(false);
-  };
-  useEffect(() => {
-    void reload();
   }, []);
   return { data, setData, reload, loading, error };
 }
@@ -1606,15 +1603,17 @@ export default function App() {
   );
   useEffect(() => {
     if (!configured) return;
-    supabase.auth
-      .getSession()
-      .then(({ data }) => setSession(Boolean(data.session)));
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) await reload();
+      setSession(Boolean(data.session));
+    });
     const { data: s } = supabase.auth.onAuthStateChange((event, x) => {
       setSession(Boolean(x));
+      if (x) void reload();
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
     });
     return () => s.subscription.unsubscribe();
-  }, []);
+  }, [reload]);
   if (recovery) return <PasswordReset done={() => setRecovery(false)} />;
   if (session === false) return <Login />;
   if (session === null || loading)
