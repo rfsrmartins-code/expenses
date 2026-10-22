@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   BarChart3,
   CalendarClock,
+  ChevronRight,
   Download,
   Goal,
   Home,
@@ -13,7 +14,9 @@ import {
   LogOut,
   Menu,
   Pencil,
+  PiggyBank,
   Plus,
+  ReceiptText,
   Scale,
   Settings,
   Trash2,
@@ -328,7 +331,13 @@ function PasswordReset({ done }: { done: () => void }) {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({
+  children,
+  memberName,
+}: {
+  children: React.ReactNode;
+  memberName: string;
+}) {
   const [open, setOpen] = useState(false);
   const nav = [
     ["/", Home, "Visão geral"],
@@ -365,10 +374,10 @@ function Shell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="profile">
-          <div>R</div>
+          <div>{memberName[0]?.toUpperCase() || "R"}</div>
           <span>
-            <b>Rafael</b>
-            <small>Conta do casal</small>
+            <b>{memberName}</b>
+            <small>Finanças partilhadas</small>
           </span>
           <button
             aria-label="Terminar sessão"
@@ -435,6 +444,19 @@ function Dashboard({ d }: { d: Data }) {
         ),
       0,
     );
+  const totalBalance = d.accounts.reduce(
+    (total, account) =>
+      total +
+      accountBalance(
+        account,
+        d.movements.filter((movement) => movement.account_id === account.id),
+      ),
+    0,
+  );
+  const savingsRate =
+    income > 0
+      ? Math.max(0, Math.round(((income - expense) / income) * 100))
+      : 0;
   const chart = d.categories
     .filter((c) => c.kind === "expense")
     .map((c) => ({
@@ -469,33 +491,83 @@ function Dashboard({ d }: { d: Data }) {
           </NavLink>
         }
       />
-      <section className="hero">
-        <div>
-          <span>Resultado do mês</span>
+      <section className="dashboard-hero">
+        <div className="hero-copy">
+          <span className="hero-label">BALANÇO DE {monthLabel}</span>
           <strong>{eur(income - expense)}</strong>
-          <small>Rendimentos menos despesas confirmadas</small>
+          <p>
+            {income - expense >= 0
+              ? "Este mês está com saldo positivo."
+              : "As despesas ultrapassaram os rendimentos deste mês."}
+          </p>
+          <div className="hero-progress">
+            <i style={{ width: `${Math.min(100, savingsRate)}%` }} />
+          </div>
+          <small>
+            {savingsRate}% dos rendimentos disponíveis após despesas
+          </small>
         </div>
+        <div className="hero-balance">
+          <span>Património nas contas</span>
+          <b>{eur(totalBalance)}</b>
+          <small>
+            {d.accounts.length}{" "}
+            {d.accounts.length === 1 ? "conta ativa" : "contas ativas"}
+          </small>
+        </div>
+      </section>
+      <section className="quick-actions" aria-label="Ações rápidas">
+        <NavLink to="/movimentos">
+          <span>
+            <Plus />
+          </span>
+          <div>
+            <b>Registar movimento</b>
+            <small>Despesa ou rendimento</small>
+          </div>
+          <ChevronRight />
+        </NavLink>
+        <NavLink to="/movimentos">
+          <span>
+            <ArrowLeftRight />
+          </span>
+          <div>
+            <b>Fazer transferência</b>
+            <small>Entre as vossas contas</small>
+          </div>
+          <ChevronRight />
+        </NavLink>
+        <NavLink to="/importar">
+          <span>
+            <Upload />
+          </span>
+          <div>
+            <b>Importar extrato</b>
+            <small>Adicionar movimentos CSV</small>
+          </div>
+          <ChevronRight />
+        </NavLink>
       </section>
       <section className="kpis">
         <article>
           <i className="green">
             <ArrowDownRight />
           </i>
-          <span>Rendimentos</span>
+          <span>Rendimentos do mês</span>
           <strong>{eur(income)}</strong>
         </article>
         <article>
           <i className="orange">
             <ArrowUpRight />
           </i>
-          <span>Despesas</span>
+          <span>Despesas do mês</span>
           <strong>{eur(expense)}</strong>
         </article>
         <article>
           <i className="sage">
             <Home />
           </i>
-          <span>Partilhadas</span>
+          <span>Despesas partilhadas</span>
           <strong>{eur(shared)}</strong>
         </article>
         <article>
@@ -506,11 +578,11 @@ function Dashboard({ d }: { d: Data }) {
           <strong>{eur(joint)}</strong>
         </article>
       </section>
-      <section className="grid-2">
-        <article className="panel">
+      <section className="dashboard-grid">
+        <article className="panel spending-panel">
           <div className="panel-title">
             <div>
-              <small>ONDE GASTÁMOS</small>
+              <small>DISTRIBUIÇÃO DO MÊS</small>
               <h2>Despesas por categoria</h2>
             </div>
           </div>
@@ -530,29 +602,91 @@ function Dashboard({ d }: { d: Data }) {
             <p className="empty">Ainda não existem despesas neste mês.</p>
           )}
         </article>
-        <article className="panel">
+        <article className="panel accounts-panel">
           <div className="panel-title">
             <div>
-              <small>PRÓXIMOS DIAS</small>
-              <h2>Contas a pagar</h2>
+              <small>POSIÇÃO ATUAL</small>
+              <h2>Saldos das contas</h2>
             </div>
+            <NavLink className="link" to="/contas">
+              Gerir
+            </NavLink>
           </div>
-          <p className="empty">
-            Ainda não existem contas recorrentes previstas.
-          </p>
+          <div className="account-list">
+            {d.accounts.slice(0, 4).map((account) => (
+              <div className="account-row" key={account.id}>
+                <span
+                  className={
+                    account.owner_kind === "joint" ? "joint" : "personal"
+                  }
+                >
+                  {account.owner_kind === "joint" ? <Home /> : <WalletCards />}
+                </span>
+                <div>
+                  <b>{account.name}</b>
+                  <small>
+                    {account.owner_kind === "joint"
+                      ? "Conta conjunta"
+                      : d.members.find(
+                          (member) => member.id === account.owner_member_id,
+                        )?.display_name || "Conta pessoal"}
+                  </small>
+                </div>
+                <strong>
+                  {eur(
+                    accountBalance(
+                      account,
+                      d.movements.filter(
+                        (movement) => movement.account_id === account.id,
+                      ),
+                    ),
+                  )}
+                </strong>
+              </div>
+            ))}
+          </div>
+          {!d.accounts.length && (
+            <p className="empty">Ainda não existem contas.</p>
+          )}
         </article>
       </section>
-      <section className="panel">
-        <div className="panel-title">
-          <div>
-            <small>ATIVIDADE</small>
-            <h2>Últimos movimentos</h2>
+      <section className="dashboard-bottom">
+        <section className="panel activity-panel">
+          <div className="panel-title">
+            <div>
+              <small>ATIVIDADE</small>
+              <h2>Últimos movimentos</h2>
+            </div>
+            <NavLink className="link" to="/movimentos">
+              Ver todos
+            </NavLink>
           </div>
-          <NavLink className="link" to="/movimentos">
-            Ver todos
+          <MovementTable rows={m.slice(0, 5)} d={d} />
+        </section>
+        <aside className="dashboard-aside">
+          <NavLink to="/orcamentos" className="insight-card budget-insight">
+            <span>
+              <ReceiptText />
+            </span>
+            <div>
+              <small>ORÇAMENTOS</small>
+              <b>Controla os limites mensais</b>
+              <p>Compara o planeado com as despesas reais.</p>
+            </div>
+            <ChevronRight />
           </NavLink>
-        </div>
-        <MovementTable rows={m.slice(0, 5)} d={d} />
+          <NavLink to="/objetivos" className="insight-card goal-insight">
+            <span>
+              <PiggyBank />
+            </span>
+            <div>
+              <small>POUPANÇA</small>
+              <b>Constrói os vossos objetivos</b>
+              <p>Reserva dinheiro sem o contar como despesa.</p>
+            </div>
+            <ChevronRight />
+          </NavLink>
+        </aside>
       </section>
     </>
   );
@@ -1619,7 +1753,7 @@ export default function App() {
   if (session === null || loading)
     return <div className="loading">A preparar as vossas finanças…</div>;
   return (
-    <Shell>
+    <Shell memberName={data.members[0]?.display_name || "Rafael"}>
       {!configured && (
         <div className="demo-banner">
           Modo demonstração — dados fictícios, sem persistência.
