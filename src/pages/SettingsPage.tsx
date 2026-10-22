@@ -1,6 +1,7 @@
-import { FormEvent, useState } from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { Download, Pencil, Plus, Smartphone, Trash2, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { getInstallPrompt, requestPwaInstall } from "../pwa";
 import type { Category, Member } from "../types";
 export default function SettingsPage({
   members,
@@ -15,6 +16,7 @@ export default function SettingsPage({
     undefined,
   );
   const [member, setMember] = useState<Member | null>(null);
+  const { installable, installed, install } = usePwaInstall();
   const archive = async (c: Category) => {
     if (
       !confirm(
@@ -95,6 +97,29 @@ export default function SettingsPage({
           ))}
         </article>
       </section>
+      <section className="panel install-panel">
+        <div className="install-icon">
+          <Smartphone />
+        </div>
+        <div>
+          <div className="eyebrow">ACESSO RÁPIDO</div>
+          <h2>Aplicação no telemóvel</h2>
+          <p>
+            {installed
+              ? "A aplicação já está instalada neste dispositivo."
+              : installable
+                ? "Instala a Dois para abrir em ecrã inteiro a partir do ecrã principal."
+                : "No iPhone, abre no Safari e escolhe Partilhar → Adicionar ao ecrã principal. No Android, usa o menu do navegador → Instalar aplicação."}
+          </p>
+        </div>
+        {installable && !installed && (
+          <button className="primary" onClick={install}>
+            <Download />
+            Instalar aplicação
+          </button>
+        )}
+        {installed && <span className="installed-badge">Instalada</span>}
+      </section>
       {editing !== undefined && (
         <CategoryModal
           category={editing}
@@ -112,6 +137,35 @@ export default function SettingsPage({
       )}
     </>
   );
+}
+
+function usePwaInstall() {
+  const standalone = () =>
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const [installable, setInstallable] = useState(Boolean(getInstallPrompt()));
+  const [installed, setInstalled] = useState(standalone);
+
+  useEffect(() => {
+    const ready = () => setInstallable(Boolean(getInstallPrompt()));
+    const complete = () => {
+      setInstalled(true);
+      setInstallable(false);
+    };
+    window.addEventListener("pwa-install-ready", ready);
+    window.addEventListener("pwa-install-complete", complete);
+    return () => {
+      window.removeEventListener("pwa-install-ready", ready);
+      window.removeEventListener("pwa-install-complete", complete);
+    };
+  }, []);
+
+  const install = async () => {
+    const accepted = await requestPwaInstall();
+    if (accepted) setInstallable(false);
+  };
+
+  return { installable, installed, install };
 }
 function CategoryModal({
   category,

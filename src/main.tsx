@@ -6,6 +6,7 @@ import App from "./App";
 import "./styles.css";
 import "./enhancements.css";
 import "./redesign.css";
+import { registerServiceWorker } from "./pwa";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={new QueryClient()}>
@@ -15,3 +16,5 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+registerServiceWorker();

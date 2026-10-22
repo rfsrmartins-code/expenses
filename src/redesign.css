@@ -605,6 +605,43 @@ textarea {
     box-shadow: none;
   }
 }
+
+.install-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-top: 18px;
+}
+.install-panel h2,
+.install-panel p {
+  margin-bottom: 0;
+}
+.install-panel p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin-top: 5px;
+}
+.install-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(145deg, #365f52, #213e35);
+}
+.install-icon svg {
+  width: 24px;
+}
+.installed-badge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #e2eee8;
+  color: #365f52;
+  font-size: 12px;
+  font-weight: 750;
+}
 @media (max-width: 620px) {
   .page-head {
     align-items: center;
@@ -650,5 +687,14 @@ textarea {
   .login-card {
     padding: 28px;
     width: 92%;
+  }
+  .install-panel {
+    grid-template-columns: auto 1fr;
+  }
+  .install-panel .primary,
+  .install-panel .installed-badge {
+    grid-column: 1 / -1;
+    justify-content: center;
+    text-align: center;
   }
 }
