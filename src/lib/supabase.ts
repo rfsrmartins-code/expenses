@@ -5,5 +5,13 @@ export const configured = Boolean(url && key && !url.includes("SEU-PROJETO"));
 export const supabase = createClient(
   url || "https://placeholder.supabase.co",
   key || "placeholder",
-  { auth: { persistSession: true, detectSessionInUrl: true } },
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: "pkce",
+      storage: window.localStorage,
+    },
+  },
 );

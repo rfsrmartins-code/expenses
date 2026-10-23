@@ -72,27 +72,33 @@ export default function SettingsPage({
               Nova
             </button>
           </div>
-          {categories.map((c) => (
-            <div className="category" key={c.id}>
-              <i style={{ background: c.color }} />
-              <b>{c.name}</b>
-              <span>{c.kind === "expense" ? "Despesa" : "Rendimento"}</span>
-              <div className="row-actions">
-                <button
-                  className="icon"
-                  aria-label="Editar"
-                  onClick={() => setEditing(c)}
-                >
-                  <Pencil />
-                </button>
-                <button
-                  className="icon danger"
-                  aria-label="Arquivar"
-                  onClick={() => archive(c)}
-                >
-                  <Trash2 />
-                </button>
-              </div>
+          {(["expense", "income"] as const).map((kind) => (
+            <div className="category-section" key={kind}>
+              <h3>{kind === "expense" ? "Despesas" : "Rendimentos"}</h3>
+              {categories
+                .filter((category) => category.kind === kind)
+                .map((c) => (
+                  <div className="category" key={c.id}>
+                    <i style={{ background: c.color }} />
+                    <b>{c.name}</b>
+                    <div className="row-actions">
+                      <button
+                        className="icon"
+                        aria-label="Editar"
+                        onClick={() => setEditing(c)}
+                      >
+                        <Pencil />
+                      </button>
+                      <button
+                        className="icon danger"
+                        aria-label="Arquivar"
+                        onClick={() => archive(c)}
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
+                  </div>
+                ))}
             </div>
           ))}
         </article>
