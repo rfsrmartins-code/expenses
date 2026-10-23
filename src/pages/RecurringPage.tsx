@@ -283,16 +283,14 @@ export default function RecurringPage({
                     <strong>{eur(o.estimated_cents)}</strong>
                     {o.status === "planned" ? (
                       <div className="recurrence-actions">
-                        {tab === "overdue" && (
-                          <button
-                            className="icon"
-                            aria-label="Ignorar esta ocorrência"
-                            title="Ignorar esta ocorrência"
-                            onClick={() => skip(o.id)}
-                          >
-                            <Ban />
-                          </button>
-                        )}
+                        <button
+                          className="secondary recurrence-skip"
+                          aria-label="Ignorar esta ocorrência"
+                          onClick={() => skip(o.id)}
+                        >
+                          <Ban />
+                          Ignorar
+                        </button>
                         <button
                           className="secondary"
                           onClick={() => setPaying(o)}
