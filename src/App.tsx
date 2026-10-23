@@ -830,7 +830,7 @@ function Movements({
         ? await supabase.rpc("delete_transfer", {
             p_transfer: item.transfer_id,
           })
-        : await supabase.from("movements").delete().eq("id", id);
+        : await supabase.rpc("delete_movement", { p_movement: id });
       if (result.error) return alert(result.error.message);
       await reload();
     } else

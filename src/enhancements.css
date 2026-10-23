@@ -212,6 +212,10 @@
   border-radius: 8px;
   color: #8a6b58;
 }
+.paid-actions .secondary {
+  padding: 8px 11px;
+  font-size: 12px;
+}
 .rules .category > .icon {
   flex: 0 0 auto;
 }

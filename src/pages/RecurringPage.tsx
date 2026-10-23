@@ -134,6 +134,20 @@ export default function RecurringPage({
     if (error) alert(error.message);
     else await load();
   };
+  const undoPayment = async (occurrence: Occurrence) => {
+    if (
+      !occurrence.movement_id ||
+      !confirm(
+        "Anular este pagamento? O movimento será eliminado e a ocorrência voltará a ficar prevista.",
+      )
+    )
+      return;
+    const { error } = await supabase.rpc("delete_movement", {
+      p_movement: occurrence.movement_id,
+    });
+    if (error) alert(error.message);
+    else await load();
+  };
   const remove = async (id: string) => {
     if (
       !confirm(
@@ -288,10 +302,18 @@ export default function RecurringPage({
                         </button>
                       </div>
                     ) : (
-                      <span className="paid-label">
-                        <Check />
-                        Pago
-                      </span>
+                      <div className="recurrence-actions paid-actions">
+                        <span className="paid-label">
+                          <Check />
+                          Pago
+                        </span>
+                        <button
+                          className="secondary danger"
+                          onClick={() => undoPayment(o)}
+                        >
+                          Anular pagamento
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
