@@ -11,9 +11,7 @@ export const parseMoney = (value: string) => {
     .replace(/\.(?=\d{3}(?:\D|$))/g, "")
     .replace(",", ".");
   const n = Number(clean);
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new Error("Indica um valor superior a zero.");
-  }
+  if (!Number.isFinite(n)) throw new Error("Valor inválido.");
   return Math.round(n * 100);
 };
 export const splitEqual = (cents: number): [number, number] => [

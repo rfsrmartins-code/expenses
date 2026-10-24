@@ -981,10 +981,12 @@ function MovementModal({
     try {
       const fd = new FormData(e.currentTarget);
       const memberId = String(fd.get("owner")) || null;
+      const amountCents = parseMoney(String(fd.get("amount")));
+      if (amountCents <= 0) throw new Error("Indica um valor superior a zero.");
       const row = {
         household_id: d.members[0]?.household_id,
         description: String(fd.get("description")).trim(),
-        amount_cents: parseMoney(String(fd.get("amount"))),
+        amount_cents: amountCents,
         movement_date: String(fd.get("date")),
         type,
         scope: type === "expense" ? scope : null,
