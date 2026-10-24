@@ -45,8 +45,18 @@ import SettlementsPage from "./pages/SettlementsPage";
 import ImportPage from "./pages/ImportPage";
 
 const demoMembers: Member[] = [
-  { id: "rafael", display_name: "Rafael", household_id: "demo" },
-  { id: "maria", display_name: "Maria", household_id: "demo" },
+  {
+    id: "rafael",
+    user_id: "rafael",
+    display_name: "Rafael",
+    household_id: "demo",
+  },
+  {
+    id: "maria",
+    user_id: "maria",
+    display_name: "Maria",
+    household_id: "demo",
+  },
 ];
 const demoAccounts: Account[] = [
   {
@@ -418,7 +428,7 @@ const Header = ({
   </header>
 );
 
-function Dashboard({ d }: { d: Data }) {
+function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const m = d.movements.filter(
@@ -467,12 +477,6 @@ function Dashboard({ d }: { d: Data }) {
       color: c.color,
     }))
     .filter((x) => x.valor);
-  const memberName =
-    d.members.find(
-      (x) => x.display_name.toLocaleLowerCase("pt-PT") === "rafael",
-    )?.display_name ||
-    d.members[0]?.display_name ||
-    "Olá";
   const monthLabel = new Intl.DateTimeFormat("pt-PT", {
     month: "long",
     year: "numeric",
@@ -482,7 +486,7 @@ function Dashboard({ d }: { d: Data }) {
   return (
     <>
       <Header
-        title={memberName === "Olá" ? "Olá" : `Olá, ${memberName}`}
+        title={memberName ? `Olá, ${memberName}` : "Olá"}
         subtitle={monthLabel}
         action={
           <NavLink to="/movimentos" className="primary">
@@ -1732,6 +1736,9 @@ export default function App() {
   const [session, setSession] = useState<boolean | null>(
     configured ? null : true,
   );
+  const [sessionUserId, setSessionUserId] = useState<string | null>(
+    configured ? null : "rafael",
+  );
   const [recovery, setRecovery] = useState(
     new URLSearchParams(location.search).get("recovery") === "1",
   );
@@ -1739,10 +1746,12 @@ export default function App() {
     if (!configured) return;
     supabase.auth.getSession().then(async ({ data }) => {
       if (data.session) await reload();
+      setSessionUserId(data.session?.user.id || null);
       setSession(Boolean(data.session));
     });
     const { data: s } = supabase.auth.onAuthStateChange((event, x) => {
       setSession(Boolean(x));
+      setSessionUserId(x?.user.id || null);
       if (x) void reload();
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
     });
@@ -1752,8 +1761,11 @@ export default function App() {
   if (session === false) return <Login />;
   if (session === null || loading)
     return <div className="loading">A preparar as vossas finanças…</div>;
+  const currentMemberName =
+    data.members.find((member) => member.user_id === sessionUserId)
+      ?.display_name || (configured ? "Utilizador" : "Rafael");
   return (
-    <Shell memberName={data.members[0]?.display_name || "Rafael"}>
+    <Shell memberName={currentMemberName}>
       {!configured && (
         <div className="demo-banner">
           Modo demonstração — dados fictícios, sem persistência.
@@ -1763,7 +1775,10 @@ export default function App() {
         <div className="error">Não foi possível sincronizar: {error}</div>
       )}
       <Routes>
-        <Route path="/" element={<Dashboard d={data} />} />
+        <Route
+          path="/"
+          element={<Dashboard d={data} memberName={currentMemberName} />}
+        />
         <Route
           path="/movimentos"
           element={<Movements d={data} setData={setData} reload={reload} />}
@@ -1810,7 +1825,10 @@ export default function App() {
           path="/definicoes"
           element={<SettingsPage d={data} reload={reload} />}
         />
-        <Route path="*" element={<Dashboard d={data} />} />
+        <Route
+          path="*"
+          element={<Dashboard d={data} memberName={currentMemberName} />}
+        />
       </Routes>
     </Shell>
   );

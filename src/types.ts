@@ -3,6 +3,7 @@ export type MovementType = "income" | "expense" | "transfer" | "settlement";
 export type Scope = "personal" | "shared";
 export interface Member {
   id: string;
+  user_id: string;
   display_name: string;
   household_id: string;
 }
