@@ -6,11 +6,14 @@ export const eur = (cents: number) =>
 export const parseMoney = (value: string) => {
   const clean = value
     .trim()
-    .replace(/\s/g, "")
+    .replace(/[\s\u00a0]/g, "")
+    .replace(/[^\d,.-]/g, "")
     .replace(/\.(?=\d{3}(?:\D|$))/g, "")
     .replace(",", ".");
   const n = Number(clean);
-  if (!Number.isFinite(n)) throw new Error("Valor inválido");
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error("Indica um valor superior a zero.");
+  }
   return Math.round(n * 100);
 };
 export const splitEqual = (cents: number): [number, number] => [

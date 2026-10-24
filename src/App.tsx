@@ -978,55 +978,62 @@ function MovementModal({
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
-    const fd = new FormData(e.currentTarget);
-    const memberId = String(fd.get("owner")) || null;
-    const row = {
-      household_id: d.members[0]?.household_id,
-      description: String(fd.get("description")).trim(),
-      amount_cents: parseMoney(String(fd.get("amount"))),
-      movement_date: String(fd.get("date")),
-      type,
-      scope: type === "expense" ? scope : null,
-      account_id: String(fd.get("account")),
-      category_id: String(fd.get("category")) || null,
-      expense_owner_id:
-        type === "expense" && scope === "personal" ? memberId : null,
-      paid_by_member_id:
-        type === "expense" ? String(fd.get("payer")) || null : null,
-      notes: String(fd.get("notes")).trim() || null,
-      status: "confirmed" as const,
-    };
-    if (configured) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const payload = { ...row, created_by: movement?.created_by || user?.id };
-      const { error } = movement
-        ? await supabase.from("movements").update(row).eq("id", movement.id)
-        : await supabase.from("movements").insert(payload);
-      if (error) {
-        alert(error.message);
-        setBusy(false);
-        return;
+    try {
+      const fd = new FormData(e.currentTarget);
+      const memberId = String(fd.get("owner")) || null;
+      const row = {
+        household_id: d.members[0]?.household_id,
+        description: String(fd.get("description")).trim(),
+        amount_cents: parseMoney(String(fd.get("amount"))),
+        movement_date: String(fd.get("date")),
+        type,
+        scope: type === "expense" ? scope : null,
+        account_id: String(fd.get("account")),
+        category_id: String(fd.get("category")) || null,
+        expense_owner_id:
+          type === "expense" && scope === "personal" ? memberId : null,
+        paid_by_member_id:
+          type === "expense" ? String(fd.get("payer")) || null : null,
+        notes: String(fd.get("notes")).trim() || null,
+        status: "confirmed" as const,
+      };
+      if (configured) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const payload = {
+          ...row,
+          created_by: movement?.created_by || user?.id,
+        };
+        const { error } = movement
+          ? await supabase.from("movements").update(row).eq("id", movement.id)
+          : await supabase.from("movements").insert(payload);
+        if (error) throw error;
+        await reload();
+      } else {
+        const local = {
+          ...row,
+          id: movement?.id || crypto.randomUUID(),
+          transfer_id: null,
+          transfer_direction: null,
+          created_at: movement?.created_at || new Date().toISOString(),
+          created_by: "rafael",
+        } as Movement;
+        setData((x) => ({
+          ...x,
+          movements: movement
+            ? x.movements.map((m) => (m.id === movement.id ? local : m))
+            : [local, ...x.movements],
+        }));
       }
-      await reload();
-    } else {
-      const local = {
-        ...row,
-        id: movement?.id || crypto.randomUUID(),
-        transfer_id: null,
-        transfer_direction: null,
-        created_at: movement?.created_at || new Date().toISOString(),
-        created_by: "rafael",
-      } as Movement;
-      setData((x) => ({
-        ...x,
-        movements: movement
-          ? x.movements.map((m) => (m.id === movement.id ? local : m))
-          : [local, ...x.movements],
-      }));
+      close();
+    } catch (error) {
+      alert(
+        error instanceof Error ? error.message : "Não foi possível guardar.",
+      );
+    } finally {
+      setBusy(false);
     }
-    close();
   };
   const categories = d.categories.filter(
     (c) => c.kind === (type === "income" ? "income" : "expense"),
