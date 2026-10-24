@@ -1,5 +1,11 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import {
   ArrowDownRight,
   ArrowLeftRight,
@@ -349,6 +355,7 @@ function Shell({
   memberName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const location = useLocation();
   const nav = [
     ["/", Home, "Visão geral"],
     ["/movimentos", ArrowLeftRight, "Movimentos"],
@@ -360,9 +367,37 @@ function Shell({
     ["/importar", Upload, "Importar CSV"],
     ["/definicoes", Settings, "Definições"],
   ] as const;
+  const mobileNav = nav.filter(([to]) =>
+    ["/", "/movimentos", "/recorrentes", "/orcamentos"].includes(to),
+  );
+  const moreActive = !mobileNav.some(
+    ([to]) =>
+      location.pathname === to ||
+      (to !== "/" && location.pathname.startsWith(`${to}/`)),
+  );
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
   return (
     <div className="app">
-      <aside className={open ? "open" : ""}>
+      <button
+        className={`drawer-backdrop ${open ? "open" : ""}`}
+        aria-label="Fechar menu"
+        aria-hidden={!open}
+        tabIndex={open ? 0 : -1}
+        onClick={() => setOpen(false)}
+      />
+      <aside className={open ? "open" : ""} aria-label="Menu principal">
         <div className="side-brand">
           <span>D</span>
           <b>DOIS</b>
@@ -370,7 +405,7 @@ function Shell({
             <X />
           </button>
         </div>
-        <nav>
+        <nav className="sidebar-nav">
           {nav.map(([to, I, label]) => (
             <NavLink
               key={to}
@@ -398,15 +433,39 @@ function Shell({
         </div>
       </aside>
       <main>
-        <button
-          className="mobile-menu"
-          onClick={() => setOpen(true)}
-          aria-label="Abrir menu"
-        >
-          <Menu />
-        </button>
+        <div className="mobile-topbar">
+          <div className="mobile-wordmark">
+            <span>D</span>
+            <b>DOIS</b>
+          </div>
+          <button
+            className="mobile-menu"
+            onClick={() => setOpen(true)}
+            aria-label="Abrir menu completo"
+            aria-expanded={open}
+          >
+            <Menu />
+          </button>
+        </div>
         {children}
       </main>
+      <nav className="mobile-bottom-nav" aria-label="Navegação principal móvel">
+        {mobileNav.map(([to, Icon, label]) => (
+          <NavLink key={to} to={to} end={to === "/"}>
+            <Icon />
+            <span>{label === "Visão geral" ? "Início" : label}</span>
+          </NavLink>
+        ))}
+        <button
+          className={open || moreActive ? "active" : ""}
+          onClick={() => setOpen(true)}
+          aria-label="Abrir mais opções"
+          aria-expanded={open}
+        >
+          <Menu />
+          <span>Mais</span>
+        </button>
+      </nav>
     </div>
   );
 }
