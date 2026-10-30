@@ -23,8 +23,10 @@ import {
   PiggyBank,
   Plus,
   ReceiptText,
+  RotateCcw,
   Scale,
   Settings,
+  SlidersHorizontal,
   Trash2,
   Upload,
   WalletCards,
@@ -871,13 +873,50 @@ function Movements({
   reload: () => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
+  const [accountFilter, setAccountFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [scopeFilter, setScopeFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [editing, setEditing] = useState<Movement | null | undefined>(
     undefined,
   );
   const [transfer, setTransfer] = useState(false);
-  const rows = d.movements.filter((m) =>
-    m.description.toLowerCase().includes(search.toLowerCase()),
+  const normalizedSearch = search.trim().toLowerCase();
+  const rows = d.movements.filter((m) => {
+    const matchesSearch =
+      !normalizedSearch ||
+      m.description.toLowerCase().includes(normalizedSearch) ||
+      m.notes?.toLowerCase().includes(normalizedSearch);
+    return (
+      matchesSearch &&
+      (!accountFilter || m.account_id === accountFilter) &&
+      (!categoryFilter || m.category_id === categoryFilter) &&
+      (!typeFilter || m.type === typeFilter) &&
+      (!scopeFilter || m.scope === scopeFilter) &&
+      (!dateFrom || m.movement_date >= dateFrom) &&
+      (!dateTo || m.movement_date <= dateTo)
+    );
+  });
+  const hasFilters = Boolean(
+    search ||
+    accountFilter ||
+    categoryFilter ||
+    typeFilter ||
+    scopeFilter ||
+    dateFrom ||
+    dateTo,
   );
+  const clearFilters = () => {
+    setSearch("");
+    setAccountFilter("");
+    setCategoryFilter("");
+    setTypeFilter("");
+    setScopeFilter("");
+    setDateFrom("");
+    setDateTo("");
+  };
   const remove = async (id: string) => {
     const item = d.movements.find((x) => x.id === id);
     if (
@@ -920,17 +959,111 @@ function Movements({
           </div>
         }
       />
-      <div className="toolbar">
-        <input
-          type="search"
-          placeholder="Pesquisar descrição…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button className="secondary" onClick={() => exportCsv(rows)}>
-          <Download />
-          Exportar CSV
-        </button>
+      <div className="movement-filters">
+        <div className="filter-heading">
+          <div>
+            <SlidersHorizontal />
+            <span>Filtrar movimentos</span>
+          </div>
+          <span className="filter-count">
+            {rows.length} de {d.movements.length}
+          </span>
+        </div>
+        <div className="filter-grid">
+          <label className="filter-search">
+            <span>Pesquisa</span>
+            <input
+              type="search"
+              placeholder="Descrição ou notas…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <label>
+            <span>Conta</span>
+            <select
+              value={accountFilter}
+              onChange={(e) => setAccountFilter(e.target.value)}
+            >
+              <option value="">Todas as contas</option>
+              {d.accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Categoria</span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+            >
+              <option value="">Todas as categorias</option>
+              {d.categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Tipo</span>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="">Todos os tipos</option>
+              <option value="expense">Despesas</option>
+              <option value="income">Rendimentos</option>
+              <option value="transfer">Transferências</option>
+              <option value="settlement">Acertos</option>
+            </select>
+          </label>
+          <label>
+            <span>Classificação</span>
+            <select
+              value={scopeFilter}
+              onChange={(e) => setScopeFilter(e.target.value)}
+            >
+              <option value="">Todas</option>
+              <option value="shared">Partilhadas</option>
+              <option value="personal">Pessoais</option>
+            </select>
+          </label>
+          <label>
+            <span>Desde</span>
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </label>
+          <label>
+            <span>Até</span>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="filter-actions">
+          <button
+            className="filter-reset"
+            onClick={clearFilters}
+            disabled={!hasFilters}
+          >
+            <RotateCcw />
+            Limpar filtros
+          </button>
+          <button className="secondary" onClick={() => exportCsv(rows)}>
+            <Download />
+            Exportar resultados
+          </button>
+        </div>
       </div>
       <section className="panel">
         <MovementTable

@@ -457,6 +457,95 @@ td {
 .toolbar input {
   background: #fff;
 }
+.movement-filters {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 24px rgba(31, 64, 53, 0.05);
+}
+.filter-heading,
+.filter-heading > div,
+.filter-actions {
+  display: flex;
+  align-items: center;
+}
+.filter-heading {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.filter-heading > div {
+  gap: 8px;
+  font-weight: 750;
+  color: var(--ink);
+}
+.filter-heading svg {
+  width: 18px;
+  color: var(--green);
+}
+.filter-count {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #e8efeb;
+  color: #45695d;
+  font-size: 12px;
+  font-weight: 700;
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.6fr) repeat(6, minmax(125px, 1fr));
+  gap: 10px;
+}
+.filter-grid label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+.filter-grid label > span {
+  color: #7b8a82;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.filter-grid input,
+.filter-grid select {
+  width: 100%;
+  height: 43px;
+  background: #fff;
+}
+.filter-actions {
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+.filter-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: #547067;
+  font-size: 12px;
+  font-weight: 700;
+}
+.filter-reset svg {
+  width: 15px;
+}
+.filter-reset:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+@media (max-width: 1200px) {
+  .filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .filter-search {
+    grid-column: 1 / -1;
+  }
+}
 .cards {
   gap: 16px;
 }
@@ -687,6 +776,30 @@ textarea {
     flex-direction: column;
   }
   .toolbar .secondary {
+    justify-content: center;
+  }
+  .movement-filters {
+    margin-inline: -4px;
+    padding: 14px;
+  }
+  .filter-heading {
+    margin-bottom: 12px;
+  }
+  .filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .filter-search,
+  .filter-grid label:nth-child(2),
+  .filter-grid label:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+  .filter-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+  .filter-actions .secondary,
+  .filter-reset {
+    min-height: 44px;
     justify-content: center;
   }
   .login-card {
