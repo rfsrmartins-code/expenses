@@ -874,6 +874,7 @@ function Movements({
 }) {
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState("");
+  const [ownershipFilter, setOwnershipFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [scopeFilter, setScopeFilter] = useState("");
@@ -885,6 +886,7 @@ function Movements({
   const [transfer, setTransfer] = useState(false);
   const normalizedSearch = search.trim().toLowerCase();
   const rows = d.movements.filter((m) => {
+    const account = d.accounts.find((item) => item.id === m.account_id);
     const matchesSearch =
       !normalizedSearch ||
       m.description.toLowerCase().includes(normalizedSearch) ||
@@ -892,6 +894,11 @@ function Movements({
     return (
       matchesSearch &&
       (!accountFilter || m.account_id === accountFilter) &&
+      (!ownershipFilter ||
+        (ownershipFilter === "joint"
+          ? account?.owner_kind === "joint"
+          : account?.owner_kind === "member" &&
+            account.owner_member_id === ownershipFilter)) &&
       (!categoryFilter || m.category_id === categoryFilter) &&
       (!typeFilter || m.type === typeFilter) &&
       (!scopeFilter || m.scope === scopeFilter) &&
@@ -902,6 +909,7 @@ function Movements({
   const hasFilters = Boolean(
     search ||
     accountFilter ||
+    ownershipFilter ||
     categoryFilter ||
     typeFilter ||
     scopeFilter ||
@@ -911,6 +919,7 @@ function Movements({
   const clearFilters = () => {
     setSearch("");
     setAccountFilter("");
+    setOwnershipFilter("");
     setCategoryFilter("");
     setTypeFilter("");
     setScopeFilter("");
@@ -989,6 +998,21 @@ function Movements({
               {d.accounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Titularidade</span>
+            <select
+              value={ownershipFilter}
+              onChange={(e) => setOwnershipFilter(e.target.value)}
+            >
+              <option value="">Todas as titularidades</option>
+              <option value="joint">Conjunta</option>
+              {d.members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.display_name}
                 </option>
               ))}
             </select>
