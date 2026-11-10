@@ -1,4 +1,4 @@
-import type { Movement } from "../types";
+import type { ExpenseSplit, Movement } from "../types";
 export const eur = (cents: number) =>
   new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(
     cents / 100,
@@ -53,6 +53,7 @@ export const reportTotals = (movements: Movement[]) =>
 export const settlement = (
   members: [string, string],
   movements: Movement[],
+  splits: ExpenseSplit[] = [],
 ) => {
   const paid = Object.fromEntries(members.map((id) => [id, 0]));
   const owed = Object.fromEntries(members.map((id) => [id, 0]));
@@ -60,9 +61,17 @@ export const settlement = (
     (x) => x.type === "expense" && x.status === "confirmed",
   )) {
     if (m.scope === "shared") {
-      const [a, b] = splitEqual(m.amount_cents);
-      owed[members[0]] += a;
-      owed[members[1]] += b;
+      const saved = splits.filter((split) => split.movement_id === m.id);
+      if (saved.length) {
+        saved.forEach((split) => {
+          if (split.member_id in owed)
+            owed[split.member_id] += split.share_cents;
+        });
+      } else {
+        const [a, b] = splitEqual(m.amount_cents);
+        owed[members[0]] += a;
+        owed[members[1]] += b;
+      }
       if (m.paid_by_member_id) paid[m.paid_by_member_id] += m.amount_cents;
     } else if (m.expense_owner_id) owed[m.expense_owner_id] += m.amount_cents;
   }

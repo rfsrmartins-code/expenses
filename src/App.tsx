@@ -42,9 +42,15 @@ import {
   YAxis,
 } from "recharts";
 import { configured, supabase } from "./lib/supabase";
-import { accountBalance, eur, parseMoney } from "./lib/money";
+import { accountBalance, eur, parseMoney, settlement } from "./lib/money";
 import { parseCsv, type CsvMapping, type ParsedRow } from "./lib/csv";
-import type { Account, Category, Member, Movement } from "./types";
+import type {
+  Account,
+  Category,
+  ExpenseSplit,
+  Member,
+  Movement,
+} from "./types";
 import RecurringPage from "./pages/RecurringPage";
 import BudgetsPage from "./pages/BudgetsPage";
 import GoalsPage from "./pages/GoalsPage";
@@ -159,6 +165,7 @@ type Data = {
   accounts: Account[];
   categories: Category[];
   movements: Movement[];
+  expenseSplits: ExpenseSplit[];
 };
 function useData() {
   const empty: Data = {
@@ -166,6 +173,7 @@ function useData() {
     accounts: [],
     categories: [],
     movements: [],
+    expenseSplits: [],
   };
   const [data, setData] = useState<Data>(
     configured
@@ -175,6 +183,7 @@ function useData() {
           accounts: demoAccounts,
           categories: demoCats,
           movements: demoMovements,
+          expenseSplits: [],
         },
   );
   const [loading, setLoading] = useState(false);
@@ -182,7 +191,7 @@ function useData() {
   const reload = useCallback(async () => {
     if (!configured) return;
     setLoading(true);
-    const [m, a, c, v] = await Promise.all([
+    const [m, a, c, v, s] = await Promise.all([
       supabase.from("members").select("*"),
       supabase.from("accounts").select("*").eq("archived", false),
       supabase.from("categories").select("*").eq("archived", false),
@@ -190,8 +199,18 @@ function useData() {
         .from("movements")
         .select("*")
         .order("movement_date", { ascending: false }),
+      supabase
+        .from("expense_splits")
+        .select("movement_id,member_id,share_cents"),
     ]);
-    const err = m.error || a.error || c.error || v.error;
+    const splitUnavailable =
+      s.error?.code === "42P01" || s.error?.code === "PGRST205";
+    const err =
+      m.error ||
+      a.error ||
+      c.error ||
+      v.error ||
+      (splitUnavailable ? null : s.error);
     if (err) setError(err.message);
     else
       setData({
@@ -199,6 +218,7 @@ function useData() {
         accounts: a.data as Account[],
         categories: c.data as Category[],
         movements: v.data as Movement[],
+        expenseSplits: splitUnavailable ? [] : (s.data as ExpenseSplit[]),
       });
     setLoading(false);
   }, []);
@@ -492,11 +512,51 @@ const Header = ({
 );
 
 function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
+  const [showGuide, setShowGuide] = useState(
+    () => localStorage.getItem("dois-guide-shared-expense") !== "done",
+  );
+  const [monthTransfers, setMonthTransfers] = useState<
+    {
+      source_account_id: string;
+      destination_account_id: string;
+      amount_cents: number;
+      purpose: string;
+      transfer_date: string;
+    }[]
+  >([]);
+  const [upcoming, setUpcoming] = useState<
+    { id: string; due_date: string; estimated_cents: number; status: string }[]
+  >([]);
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthEnd = `${month}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+  const today = now.toISOString().slice(0, 10);
   const m = d.movements.filter(
     (x) => x.movement_date.startsWith(month) && x.status === "confirmed",
   );
+  useEffect(() => {
+    if (!configured) return;
+    void Promise.all([
+      supabase
+        .from("transfers")
+        .select(
+          "source_account_id,destination_account_id,amount_cents,purpose,transfer_date",
+        )
+        .eq("purpose", "settlement")
+        .lte("transfer_date", monthEnd),
+      supabase
+        .from("recurrence_occurrences")
+        .select("id,due_date,estimated_cents,status")
+        .eq("status", "planned")
+        .gte("due_date", today)
+        .lte("due_date", monthEnd)
+        .order("due_date")
+        .limit(4),
+    ]).then(([transfers, occurrences]) => {
+      if (!transfers.error) setMonthTransfers(transfers.data || []);
+      if (!occurrences.error) setUpcoming(occurrences.data || []);
+    });
+  }, [monthEnd, today]);
   const income = m
     .filter((x) => x.type === "income")
     .reduce((s, x) => s + x.amount_cents, 0);
@@ -506,6 +566,43 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
   const shared = m
     .filter((x) => x.type === "expense" && x.scope === "shared")
     .reduce((s, x) => s + x.amount_cents, 0);
+  const memberIds = d.members.slice(0, 2).map((member) => member.id) as [
+    string,
+    string,
+  ];
+  const sharedLedger =
+    memberIds.length === 2
+      ? settlement(
+          memberIds,
+          d.movements.filter((movement) => movement.paid_by_member_id),
+          d.expenseSplits,
+        )
+      : [];
+  const currentMonthLedger =
+    memberIds.length === 2
+      ? settlement(
+          memberIds,
+          m.filter((movement) => movement.paid_by_member_id),
+          d.expenseSplits,
+        )
+      : [];
+  const settlementNet = sharedLedger.map((entry) => {
+    const owned = d.accounts
+      .filter((account) => account.owner_member_id === entry.memberId)
+      .map((account) => account.id);
+    const transferred = monthTransfers.reduce(
+      (sum, transfer) =>
+        sum +
+        (owned.includes(transfer.destination_account_id)
+          ? transfer.amount_cents
+          : 0) -
+        (owned.includes(transfer.source_account_id)
+          ? transfer.amount_cents
+          : 0),
+      0,
+    );
+    return { ...entry, net: entry.net - transferred };
+  });
   const joint = d.accounts
     .filter((a) => a.owner_kind === "joint")
     .reduce(
@@ -558,6 +655,28 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
           </NavLink>
         }
       />
+      {showGuide && (
+        <section className="shared-guide">
+          <button
+            type="button"
+            aria-label="Fechar explicação"
+            onClick={() => {
+              localStorage.setItem("dois-guide-shared-expense", "done");
+              setShowGuide(false);
+            }}
+          >
+            <X />
+          </button>
+          <small>EXEMPLO SIMPLES</small>
+          <h2>Uma compra de 60 € paga por uma pessoa</h2>
+          <p>
+            A despesa da casa continua a ser <b>60 €</b>. Numa divisão 50/50,
+            cada pessoa fica responsável por <b>30 €</b> e quem pagou tem
+            <b> 30 € a receber</b>. O acerto reduz a dívida, sem criar outra
+            despesa.
+          </p>
+        </section>
+      )}
       <section className="dashboard-hero">
         <div className="hero-copy">
           <span className="hero-label">BALANÇO DE {monthLabel}</span>
@@ -589,31 +708,93 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
             <Plus />
           </span>
           <div>
-            <b>Registar movimento</b>
-            <small>Despesa ou rendimento</small>
+            <b>Adicionar despesa</b>
+            <small>Indicar quem pagou e dividir</small>
           </div>
           <ChevronRight />
         </NavLink>
-        <NavLink to="/movimentos">
+        <NavLink to="/recorrentes">
+          <span>
+            <CalendarClock />
+          </span>
+          <div>
+            <b>Ver próximas contas</b>
+            <small>
+              {upcoming.length
+                ? `${upcoming.length} por confirmar este mês`
+                : "Consultar contas previstas"}
+            </small>
+          </div>
+          <ChevronRight />
+        </NavLink>
+        <NavLink to="/acertos">
           <span>
             <ArrowLeftRight />
           </span>
           <div>
-            <b>Fazer transferência</b>
-            <small>Entre as vossas contas</small>
+            <b>Registar acerto</b>
+            <small>Transferência que não duplica a despesa</small>
           </div>
           <ChevronRight />
         </NavLink>
-        <NavLink to="/importar">
-          <span>
-            <Upload />
-          </span>
+      </section>
+      <section className="panel month-at-glance">
+        <div className="panel-title">
           <div>
-            <b>Importar extrato</b>
-            <small>Adicionar movimentos CSV</small>
+            <small>CASA · {monthLabel}</small>
+            <h2>O mês à primeira vista</h2>
           </div>
-          <ChevronRight />
-        </NavLink>
+          <NavLink className="link" to="/acertos">
+            Ver cálculo
+          </NavLink>
+        </div>
+        <div className="month-glance-grid">
+          <div>
+            <span>Gasto em conjunto</span>
+            <strong>{eur(shared)}</strong>
+            <small>Soma das despesas pagas e marcadas como partilhadas.</small>
+          </div>
+          {d.members.slice(0, 2).map((member) => {
+            const entry = currentMonthLedger.find(
+              (item) => item.memberId === member.id,
+            );
+            return (
+              <div key={member.id}>
+                <span>Pago por {member.display_name}</span>
+                <strong>{eur(entry?.paid || 0)}</strong>
+                <small>Pagamentos pessoais de despesas partilhadas.</small>
+              </div>
+            );
+          })}
+          <div>
+            <span>Próximas contas</span>
+            <strong>
+              {eur(
+                upcoming.reduce((sum, item) => sum + item.estimated_cents, 0),
+              )}
+            </strong>
+            <small>
+              {upcoming.length} previstas por confirmar até ao fim do mês.
+            </small>
+          </div>
+        </div>
+        {settlementNet.some((item) => item.net !== 0) && (
+          <div className="month-settlement">
+            {settlementNet
+              .filter((item) => item.net > 0)
+              .map((item) => {
+                const member = d.members.find(
+                  (candidate) => candidate.id === item.memberId,
+                );
+                return (
+                  <span key={item.memberId}>
+                    <b>{member?.display_name}</b> tem{" "}
+                    <strong>{eur(item.net)}</strong> a receber.
+                  </span>
+                );
+              })}
+          </div>
+        )}
       </section>
       <section className="kpis">
         <article>
@@ -792,6 +973,14 @@ function MovementTable({
               <td>
                 <b>{m.description}</b>
                 {m.notes && <small className="cell-note">{m.notes}</small>}
+                {m.updated_at && (
+                  <small className="cell-note">
+                    Alterado por{" "}
+                    {d.members.find((member) => member.user_id === m.updated_by)
+                      ?.display_name || "um membro"}{" "}
+                    em {new Date(m.updated_at).toLocaleDateString("pt-PT")}
+                  </small>
+                )}
               </td>
               <td>
                 {d.categories.find((c) => c.id === m.category_id)?.name || "—"}
@@ -1134,6 +1323,35 @@ function MovementModal({
   const [scope, setScope] = useState<Movement["scope"]>(
     movement?.scope || "shared",
   );
+  const existingSplits = d.expenseSplits.filter(
+    (split) => split.movement_id === movement?.id,
+  );
+  const splitKey = `dois-split-${d.members[0]?.household_id || "demo"}`;
+  const savedPercent = Number(localStorage.getItem(splitKey) || "50");
+  const existingFirst = existingSplits.find(
+    (split) => split.member_id === d.members[0]?.id,
+  );
+  const initialPercent = movement?.amount_cents
+    ? Math.round(
+        ((existingFirst?.share_cents ?? Math.ceil(movement.amount_cents / 2)) /
+          movement.amount_cents) *
+          100,
+      )
+    : savedPercent;
+  const [amountText, setAmountText] = useState(
+    movement ? (movement.amount_cents / 100).toFixed(2).replace(".", ",") : "",
+  );
+  const [firstPercent, setFirstPercent] = useState(initialPercent);
+  const [payer, setPayer] = useState(movement?.paid_by_member_id || "");
+  const amountPreview = (() => {
+    try {
+      return Math.max(0, parseMoney(amountText));
+    } catch {
+      return 0;
+    }
+  })();
+  const firstShare = Math.round((amountPreview * firstPercent) / 100);
+  const secondShare = amountPreview - firstShare;
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
@@ -1162,14 +1380,48 @@ function MovementModal({
         const {
           data: { user },
         } = await supabase.auth.getUser();
-        const payload = {
-          ...row,
-          created_by: movement?.created_by || user?.id,
-        };
-        const { error } = movement
-          ? await supabase.from("movements").update(row).eq("id", movement.id)
-          : await supabase.from("movements").insert(payload);
+        let error;
+        if (type === "expense") {
+          const result = await supabase.rpc("save_expense_with_splits", {
+            p_movement: movement?.id || null,
+            p_account: row.account_id,
+            p_description: row.description,
+            p_amount: row.amount_cents,
+            p_date: row.movement_date,
+            p_scope: row.scope,
+            p_category: row.category_id,
+            p_owner: row.expense_owner_id,
+            p_payer: row.paid_by_member_id,
+            p_notes: row.notes,
+            p_splits:
+              scope === "shared"
+                ? d.members.slice(0, 2).map((member, index) => ({
+                    member_id: member.id,
+                    share_cents: index === 0 ? firstShare : secondShare,
+                  }))
+                : [],
+          });
+          error = result.error;
+        } else {
+          const payload = {
+            ...row,
+            created_by: movement?.created_by || user?.id,
+          };
+          const result = movement
+            ? await supabase
+                .from("movements")
+                .update({
+                  ...row,
+                  updated_at: new Date().toISOString(),
+                  updated_by: user?.id,
+                })
+                .eq("id", movement.id)
+            : await supabase.from("movements").insert(payload);
+          error = result.error;
+        }
         if (error) throw error;
+        if (type === "expense" && scope === "shared" && fd.get("rememberSplit"))
+          localStorage.setItem(splitKey, String(firstPercent));
         await reload();
       } else {
         const local = {
@@ -1228,11 +1480,8 @@ function MovementModal({
               name="amount"
               inputMode="decimal"
               placeholder="0,00"
-              defaultValue={
-                movement
-                  ? (movement.amount_cents / 100).toFixed(2).replace(".", ",")
-                  : ""
-              }
+              value={amountText}
+              onChange={(e) => setAmountText(e.target.value)}
               required
             />
           </label>
@@ -1295,27 +1544,34 @@ function MovementModal({
             </select>
           </label>
           {type === "expense" && scope === "personal" && (
-            <label>
-              A quem pertence
-              <select
-                name="owner"
-                defaultValue={movement?.expense_owner_id || d.members[0]?.id}
-                required
-              >
-                {d.members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <>
+              <label>
+                A quem pertence
+                <select
+                  name="owner"
+                  defaultValue={movement?.expense_owner_id || d.members[0]?.id}
+                  required
+                >
+                  {d.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="wide privacy-note">
+                “Pessoal” separa esta despesa dos totais da casa. Neste
+                agregado, ambos conseguem ver os registos pessoais.
+              </p>
+            </>
           )}
           {type === "expense" && (
             <label>
               Quem pagou
               <select
                 name="payer"
-                defaultValue={movement?.paid_by_member_id || ""}
+                value={payer}
+                onChange={(e) => setPayer(e.target.value)}
               >
                 <option value="">Conta conjunta</option>
                 {d.members.map((m) => (
@@ -1326,6 +1582,76 @@ function MovementModal({
               </select>
             </label>
           )}
+          {type === "expense" &&
+            scope === "shared" &&
+            d.members.length >= 2 && (
+              <div className="wide split-editor">
+                <div className="split-editor-head">
+                  <div>
+                    <b>Como se divide?</b>
+                    <small>
+                      Ajusta esta despesa sem alterar as anteriores.
+                    </small>
+                  </div>
+                  <div className="split-presets">
+                    <button
+                      type="button"
+                      className={firstPercent === 50 ? "active" : ""}
+                      onClick={() => setFirstPercent(50)}
+                    >
+                      50/50
+                    </button>
+                    <button
+                      type="button"
+                      className={firstPercent !== 50 ? "active" : ""}
+                      onClick={() =>
+                        setFirstPercent(savedPercent === 50 ? 60 : savedPercent)
+                      }
+                    >
+                      Personalizada
+                    </button>
+                  </div>
+                </div>
+                <label>
+                  Parte de {d.members[0].display_name}: {firstPercent}%
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={firstPercent}
+                    onChange={(e) => setFirstPercent(Number(e.target.value))}
+                  />
+                </label>
+                <div className="split-calculation">
+                  <span>
+                    <b>Despesa da casa</b>
+                    <strong>{eur(amountPreview)}</strong>
+                  </span>
+                  <span>
+                    <b>
+                      {d.members[0].display_name} · {firstPercent}%
+                    </b>
+                    <strong>{eur(firstShare)}</strong>
+                  </span>
+                  <span>
+                    <b>
+                      {d.members[1].display_name} · {100 - firstPercent}%
+                    </b>
+                    <strong>{eur(secondShare)}</strong>
+                  </span>
+                </div>
+                <p className="split-result">
+                  {payer
+                    ? `${d.members.find((m) => m.id === payer)?.display_name} pagou. ${d.members.find((m) => m.id !== payer)?.display_name} fica com ${eur(payer === d.members[0].id ? secondShare : firstShare)} a acertar.`
+                    : "Pago pela conta conjunta: não cria dívida entre vocês."}
+                </p>
+                <label className="remember-split">
+                  <input type="checkbox" name="rememberSplit" /> Usar esta
+                  percentagem como regra habitual
+                </label>
+              </div>
+            )}
           <label className="wide">
             Notas
             <textarea
@@ -2028,6 +2354,7 @@ export default function App() {
               members={data.members}
               accounts={data.accounts}
               movements={data.movements}
+              expenseSplits={data.expenseSplits}
               reload={reload}
             />
           }

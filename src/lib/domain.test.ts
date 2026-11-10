@@ -67,6 +67,47 @@ describe("contabilidade exata", () => {
     expect(r[1].owed).toBe(500);
     expect(r[0].paid).toBe(1001);
   });
+  it("calcula uma divisão desigual sem alterar a despesa", () => {
+    const shared = movement({
+      id: "groceries",
+      paid_by_member_id: "r",
+      amount_cents: 6000,
+    });
+    const result = settlement(
+      ["r", "n"],
+      [shared],
+      [
+        { movement_id: "groceries", member_id: "r", share_cents: 3600 },
+        { movement_id: "groceries", member_id: "n", share_cents: 2400 },
+      ],
+    );
+    expect(result).toEqual([
+      { memberId: "r", paid: 6000, owed: 3600, net: 2400 },
+      { memberId: "n", paid: 0, owed: 2400, net: -2400 },
+    ]);
+    expect(reportTotals([shared]).expense).toBe(6000);
+  });
+  it("um acerto não duplica a despesa original", () => {
+    const shared = movement({ paid_by_member_id: "r", amount_cents: 6000 });
+    const settlementLegs = [
+      movement({
+        type: "transfer",
+        scope: null,
+        amount_cents: 3000,
+        transfer_direction: "out",
+      }),
+      movement({
+        type: "transfer",
+        scope: null,
+        amount_cents: 3000,
+        transfer_direction: "in",
+      }),
+    ];
+    expect(reportTotals([shared, ...settlementLegs])).toEqual({
+      income: 0,
+      expense: 6000,
+    });
+  });
 });
 describe("recorrências", () => {
   const rule: Recurrence = {

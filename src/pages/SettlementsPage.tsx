@@ -2,8 +2,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, X } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "../lib/supabase";
-import { eur, parseMoney, splitEqual } from "../lib/money";
-import type { Account, Member, Movement } from "../types";
+import { eur, parseMoney, settlement } from "../lib/money";
+import type { Account, ExpenseSplit, Member, Movement } from "../types";
 type Transfer = {
   id: string;
   source_account_id: string;
@@ -16,11 +16,13 @@ export default function SettlementsPage({
   members,
   accounts,
   movements,
+  expenseSplits,
   reload,
 }: {
   members: Member[];
   accounts: Account[];
   movements: Movement[];
+  expenseSplits: ExpenseSplit[];
   reload: () => Promise<void>;
 }) {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -36,47 +38,46 @@ export default function SettlementsPage({
   useEffect(() => {
     void load();
   }, [load]);
-  const stats = useMemo(
-    () =>
-      members.map((member) => {
-        const owned = accounts
-          .filter((a) => a.owner_member_id === member.id)
-          .map((a) => a.id);
-        const contributions = transfers
-          .filter(
-            (t) =>
-              t.purpose === "contribution" &&
-              owned.includes(t.source_account_id),
+  const stats = useMemo(() => {
+    const memberIds = members.slice(0, 2).map((member) => member.id) as [
+      string,
+      string,
+    ];
+    const ledger =
+      memberIds.length === 2
+        ? settlement(
+            memberIds,
+            movements.filter((movement) => movement.paid_by_member_id),
+            expenseSplits,
           )
-          .reduce((s, t) => s + t.amount_cents, 0);
-        const advances = movements
-          .filter(
-            (m) =>
-              m.type === "expense" &&
-              m.scope === "shared" &&
-              m.paid_by_member_id === member.id,
-          )
-          .reduce((s, m) => {
-            const [first, second] = splitEqual(m.amount_cents);
-            return s + (members[0]?.id === member.id ? second : first);
-          }, 0);
-        let settlements = 0;
-        for (const t of transfers.filter((t) => t.purpose === "settlement")) {
-          if (owned.includes(t.destination_account_id))
-            settlements += t.amount_cents;
-          if (owned.includes(t.source_account_id))
-            settlements -= t.amount_cents;
-        }
-        return {
-          member,
-          contributions,
-          advances,
-          settlements,
-          net: advances - settlements,
-        };
-      }),
-    [members, accounts, movements, transfers],
-  );
+        : [];
+    return members.map((member) => {
+      const owned = accounts
+        .filter((a) => a.owner_member_id === member.id)
+        .map((a) => a.id);
+      const contributions = transfers
+        .filter(
+          (t) =>
+            t.purpose === "contribution" && owned.includes(t.source_account_id),
+        )
+        .reduce((s, t) => s + t.amount_cents, 0);
+      const ownLedger = ledger.find((item) => item.memberId === member.id);
+      let settlements = 0;
+      for (const t of transfers.filter((t) => t.purpose === "settlement")) {
+        if (owned.includes(t.destination_account_id))
+          settlements += t.amount_cents;
+        if (owned.includes(t.source_account_id)) settlements -= t.amount_cents;
+      }
+      return {
+        member,
+        contributions,
+        paid: ownLedger?.paid || 0,
+        share: ownLedger?.owed || 0,
+        settlements,
+        net: (ownLedger?.net || 0) - settlements,
+      };
+    });
+  }, [members, accounts, movements, expenseSplits, transfers]);
   const jointBalance = accounts
     .filter((a) => a.owner_kind === "joint")
     .reduce(
@@ -101,7 +102,7 @@ export default function SettlementsPage({
     <>
       <header className="page-head">
         <div>
-          <p>PARTILHA 50/50</p>
+          <p>QUEM PAGOU E QUANTO FALTA ACERTAR</p>
           <h1>Contribuições e acertos</h1>
         </div>
         <button className="primary" onClick={() => setOpen(true)}>
@@ -126,7 +127,7 @@ export default function SettlementsPage({
                 .reduce((s, m) => s + m.amount_cents, 0),
             )}
           </strong>
-          <p>Divididas em partes iguais, com arredondamento determinístico.</p>
+          <p>O total da casa não muda quando fazem um acerto.</p>
         </article>
       </section>
       <section className="member-ledger">
@@ -142,16 +143,26 @@ export default function SettlementsPage({
                 <dd>{eur(s.contributions)}</dd>
               </div>
               <div>
-                <dt>Adiantamentos pessoais a recuperar</dt>
-                <dd>{eur(s.advances)}</dd>
+                <dt>Pago diretamente por {s.member.display_name}</dt>
+                <dd>{eur(s.paid)}</dd>
+              </div>
+              <div>
+                <dt>Parte que lhe cabia</dt>
+                <dd>{eur(s.share)}</dd>
               </div>
               <div>
                 <dt>Acertos líquidos já recebidos</dt>
                 <dd>{eur(s.settlements)}</dd>
               </div>
               <div className="ledger-total">
-                <dt>Saldo de adiantamentos</dt>
-                <dd>{eur(s.net)}</dd>
+                <dt>
+                  {s.net > 0
+                    ? "Tem a receber"
+                    : s.net < 0
+                      ? "Tem a pagar"
+                      : "Tudo acertado"}
+                </dt>
+                <dd>{eur(Math.abs(s.net))}</dd>
               </div>
             </dl>
           </article>

@@ -39,6 +39,13 @@ export interface Movement {
   status: "confirmed" | "planned";
   created_at: string;
   created_by: string;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+export interface ExpenseSplit {
+  movement_id: string;
+  member_id: string;
+  share_cents: number;
 }
 export interface Recurrence {
   id: string;
