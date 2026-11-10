@@ -42,7 +42,7 @@ import {
   YAxis,
 } from "recharts";
 import { configured, supabase } from "./lib/supabase";
-import { accountBalance, eur, parseMoney, settlement } from "./lib/money";
+import { accountBalance, eur, parseMoney } from "./lib/money";
 import { parseCsv, type CsvMapping, type ParsedRow } from "./lib/csv";
 import type {
   Account,
@@ -515,20 +515,13 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
   const [showGuide, setShowGuide] = useState(
     () => localStorage.getItem("dois-guide-shared-expense") !== "done",
   );
-  const [monthTransfers, setMonthTransfers] = useState<
-    {
-      source_account_id: string;
-      destination_account_id: string;
-      amount_cents: number;
-      purpose: string;
-      transfer_date: string;
-    }[]
-  >([]);
   const [upcoming, setUpcoming] = useState<
     { id: string; due_date: string; estimated_cents: number; status: string }[]
   >([]);
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const previousDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousMonth = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, "0")}`;
   const monthEnd = `${month}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
   const today = now.toISOString().slice(0, 10);
   const m = d.movements.filter(
@@ -536,26 +529,16 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
   );
   useEffect(() => {
     if (!configured) return;
-    void Promise.all([
-      supabase
-        .from("transfers")
-        .select(
-          "source_account_id,destination_account_id,amount_cents,purpose,transfer_date",
-        )
-        .eq("purpose", "settlement")
-        .lte("transfer_date", monthEnd),
-      supabase
-        .from("recurrence_occurrences")
-        .select("id,due_date,estimated_cents,status")
-        .eq("status", "planned")
-        .gte("due_date", today)
-        .lte("due_date", monthEnd)
-        .order("due_date")
-        .limit(4),
-    ]).then(([transfers, occurrences]) => {
-      if (!transfers.error) setMonthTransfers(transfers.data || []);
-      if (!occurrences.error) setUpcoming(occurrences.data || []);
-    });
+    void supabase
+      .from("recurrence_occurrences")
+      .select("id,due_date,estimated_cents,status")
+      .eq("status", "planned")
+      .gte("due_date", today)
+      .lte("due_date", monthEnd)
+      .order("due_date")
+      .then((occurrences) => {
+        if (!occurrences.error) setUpcoming(occurrences.data || []);
+      });
   }, [monthEnd, today]);
   const income = m
     .filter((x) => x.type === "income")
@@ -566,43 +549,24 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
   const shared = m
     .filter((x) => x.type === "expense" && x.scope === "shared")
     .reduce((s, x) => s + x.amount_cents, 0);
-  const memberIds = d.members.slice(0, 2).map((member) => member.id) as [
-    string,
-    string,
-  ];
-  const sharedLedger =
-    memberIds.length === 2
-      ? settlement(
-          memberIds,
-          d.movements.filter((movement) => movement.paid_by_member_id),
-          d.expenseSplits,
-        )
-      : [];
-  const currentMonthLedger =
-    memberIds.length === 2
-      ? settlement(
-          memberIds,
-          m.filter((movement) => movement.paid_by_member_id),
-          d.expenseSplits,
-        )
-      : [];
-  const settlementNet = sharedLedger.map((entry) => {
-    const owned = d.accounts
-      .filter((account) => account.owner_member_id === entry.memberId)
-      .map((account) => account.id);
-    const transferred = monthTransfers.reduce(
-      (sum, transfer) =>
-        sum +
-        (owned.includes(transfer.destination_account_id)
-          ? transfer.amount_cents
-          : 0) -
-        (owned.includes(transfer.source_account_id)
-          ? transfer.amount_cents
-          : 0),
-      0,
-    );
-    return { ...entry, net: entry.net - transferred };
-  });
+  const previousShared = d.movements
+    .filter(
+      (movement) =>
+        movement.movement_date.startsWith(previousMonth) &&
+        movement.status === "confirmed" &&
+        movement.type === "expense" &&
+        movement.scope === "shared",
+    )
+    .reduce((sum, movement) => sum + movement.amount_cents, 0);
+  const sharedChange = previousShared
+    ? Math.round(((shared - previousShared) / previousShared) * 100)
+    : null;
+  const personal = m
+    .filter(
+      (movement) =>
+        movement.type === "expense" && movement.scope === "personal",
+    )
+    .reduce((sum, movement) => sum + movement.amount_cents, 0);
   const joint = d.accounts
     .filter((a) => a.owner_kind === "joint")
     .reduce(
@@ -637,6 +601,12 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
       color: c.color,
     }))
     .filter((x) => x.valor);
+  const topCategory = [...chart].sort((a, b) => b.valor - a.valor)[0];
+  const upcomingTotal = upcoming.reduce(
+    (sum, item) => sum + item.estimated_cents,
+    0,
+  );
+  const jointAfterUpcoming = joint - upcomingTotal;
   const monthLabel = new Intl.DateTimeFormat("pt-PT", {
     month: "long",
     year: "numeric",
@@ -667,13 +637,13 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
           >
             <X />
           </button>
-          <small>EXEMPLO SIMPLES</small>
-          <h2>Uma compra de 60 € paga por uma pessoa</h2>
+          <small>COMEÇAR SEM COMPLICAÇÕES</small>
+          <h2>Registem primeiro o que custa manter a casa</h2>
           <p>
-            A despesa da casa continua a ser <b>60 €</b>. Numa divisão 50/50,
-            cada pessoa fica responsável por <b>30 €</b> e quem pagou tem
-            <b> 30 € a receber</b>. O acerto reduz a dívida, sem criar outra
-            despesa.
+            Marquem as despesas comuns como <b>partilhadas</b> e as restantes
+            como <b>pessoais</b>. Assim conseguem ver quanto custa a casa, onde
+            gastam mais e o que ainda falta pagar. Os acertos ficam disponíveis
+            apenas quando forem necessários.
           </p>
         </section>
       )}
@@ -709,7 +679,7 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
           </span>
           <div>
             <b>Adicionar despesa</b>
-            <small>Indicar quem pagou e dividir</small>
+            <small>Registar o custo e a categoria</small>
           </div>
           <ChevronRight />
         </NavLink>
@@ -727,13 +697,13 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
           </div>
           <ChevronRight />
         </NavLink>
-        <NavLink to="/acertos">
+        <NavLink to="/analises">
           <span>
-            <ArrowLeftRight />
+            <BarChart3 />
           </span>
           <div>
-            <b>Registar acerto</b>
-            <small>Transferência que não duplica a despesa</small>
+            <b>Ver onde melhorar</b>
+            <small>Comparar períodos e encontrar excessos</small>
           </div>
           <ChevronRight />
         </NavLink>
@@ -744,57 +714,58 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
             <small>CASA · {monthLabel}</small>
             <h2>O mês à primeira vista</h2>
           </div>
-          <NavLink className="link" to="/acertos">
-            Ver cálculo
+          <NavLink className="link" to="/analises">
+            Analisar período
           </NavLink>
         </div>
         <div className="month-glance-grid">
           <div>
             <span>Gasto em conjunto</span>
             <strong>{eur(shared)}</strong>
-            <small>Soma das despesas pagas e marcadas como partilhadas.</small>
+            <small>
+              {sharedChange === null
+                ? "Ainda sem comparação com o mês anterior."
+                : sharedChange > 0
+                  ? `${sharedChange}% acima do mês anterior.`
+                  : sharedChange < 0
+                    ? `${Math.abs(sharedChange)}% abaixo do mês anterior.`
+                    : "Igual ao mês anterior."}
+            </small>
           </div>
-          {d.members.slice(0, 2).map((member) => {
-            const entry = currentMonthLedger.find(
-              (item) => item.memberId === member.id,
-            );
-            return (
-              <div key={member.id}>
-                <span>Pago por {member.display_name}</span>
-                <strong>{eur(entry?.paid || 0)}</strong>
-                <small>Pagamentos pessoais de despesas partilhadas.</small>
-              </div>
-            );
-          })}
           <div>
             <span>Próximas contas</span>
-            <strong>
-              {eur(
-                upcoming.reduce((sum, item) => sum + item.estimated_cents, 0),
-              )}
-            </strong>
+            <strong>{eur(upcomingTotal)}</strong>
             <small>
               {upcoming.length} previstas por confirmar até ao fim do mês.
             </small>
           </div>
-        </div>
-        {settlementNet.some((item) => item.net !== 0) && (
-          <div className="month-settlement">
-            {settlementNet
-              .filter((item) => item.net > 0)
-              .map((item) => {
-                const member = d.members.find(
-                  (candidate) => candidate.id === item.memberId,
-                );
-                return (
-                  <span key={item.memberId}>
-                    <b>{member?.display_name}</b> tem{" "}
-                    <strong>{eur(item.net)}</strong> a receber.
-                  </span>
-                );
-              })}
+          <div>
+            <span>Conta conjunta após previstas</span>
+            <strong className={jointAfterUpcoming < 0 ? "negative" : ""}>
+              {eur(jointAfterUpcoming)}
+            </strong>
+            <small>Saldo conjunto menos as próximas contas conhecidas.</small>
           </div>
-        )}
+          <div>
+            <span>Maior categoria</span>
+            <strong>{topCategory?.name || "—"}</strong>
+            <small>
+              {topCategory
+                ? `${eur(topCategory.valor * 100)} gastos este mês.`
+                : "Ainda sem despesas categorizadas."}
+            </small>
+          </div>
+        </div>
+        <div className="decision-strip">
+          <b>Leitura rápida:</b>{" "}
+          {jointAfterUpcoming < 0
+            ? `Faltam ${eur(Math.abs(jointAfterUpcoming))} na conta conjunta para cobrir as contas previstas.`
+            : sharedChange !== null && sharedChange > 10
+              ? `Os custos partilhados subiram ${sharedChange}%; vale a pena rever ${topCategory?.name || "as maiores categorias"}.`
+              : topCategory
+                ? `${topCategory.name} é a categoria com maior peso; confirma se está dentro do que planearam.`
+                : "Registem e categorizem as despesas para começar a receber recomendações."}
+        </div>
       </section>
       <section className="kpis">
         <article>
@@ -808,8 +779,8 @@ function Dashboard({ d, memberName }: { d: Data; memberName: string }) {
           <i className="orange">
             <ArrowUpRight />
           </i>
-          <span>Despesas do mês</span>
-          <strong>{eur(expense)}</strong>
+          <span>Despesas pessoais</span>
+          <strong>{eur(personal)}</strong>
         </article>
         <article>
           <i className="sage">
@@ -1585,72 +1556,85 @@ function MovementModal({
           {type === "expense" &&
             scope === "shared" &&
             d.members.length >= 2 && (
-              <div className="wide split-editor">
-                <div className="split-editor-head">
-                  <div>
-                    <b>Como se divide?</b>
-                    <small>
-                      Ajusta esta despesa sem alterar as anteriores.
-                    </small>
+              <details
+                className="wide split-editor"
+                open={Boolean(movement?.paid_by_member_id)}
+              >
+                <summary>
+                  Divisão e acertos{" "}
+                  <span>
+                    {firstPercent}/{100 - firstPercent}
+                  </span>
+                </summary>
+                <div className="split-editor-body">
+                  <div className="split-editor-head">
+                    <div>
+                      <b>Como se divide?</b>
+                      <small>
+                        Ajusta esta despesa sem alterar as anteriores.
+                      </small>
+                    </div>
+                    <div className="split-presets">
+                      <button
+                        type="button"
+                        className={firstPercent === 50 ? "active" : ""}
+                        onClick={() => setFirstPercent(50)}
+                      >
+                        50/50
+                      </button>
+                      <button
+                        type="button"
+                        className={firstPercent !== 50 ? "active" : ""}
+                        onClick={() =>
+                          setFirstPercent(
+                            savedPercent === 50 ? 60 : savedPercent,
+                          )
+                        }
+                      >
+                        Personalizada
+                      </button>
+                    </div>
                   </div>
-                  <div className="split-presets">
-                    <button
-                      type="button"
-                      className={firstPercent === 50 ? "active" : ""}
-                      onClick={() => setFirstPercent(50)}
-                    >
-                      50/50
-                    </button>
-                    <button
-                      type="button"
-                      className={firstPercent !== 50 ? "active" : ""}
-                      onClick={() =>
-                        setFirstPercent(savedPercent === 50 ? 60 : savedPercent)
-                      }
-                    >
-                      Personalizada
-                    </button>
+                  <label>
+                    Parte de {d.members[0].display_name}: {firstPercent}%
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={firstPercent}
+                      onChange={(e) => setFirstPercent(Number(e.target.value))}
+                    />
+                  </label>
+                  <div className="split-calculation">
+                    <span>
+                      <b>Despesa da casa</b>
+                      <strong>{eur(amountPreview)}</strong>
+                    </span>
+                    <span>
+                      <b>
+                        {d.members[0].display_name} · {firstPercent}%
+                      </b>
+                      <strong>{eur(firstShare)}</strong>
+                    </span>
+                    <span>
+                      <b>
+                        {d.members[1].display_name} · {100 - firstPercent}%
+                      </b>
+                      <strong>{eur(secondShare)}</strong>
+                    </span>
                   </div>
+                  <p className="split-result">
+                    {payer
+                      ? `${d.members.find((m) => m.id === payer)?.display_name} pagou. ${d.members.find((m) => m.id !== payer)?.display_name} fica com ${eur(payer === d.members[0].id ? secondShare : firstShare)} a acertar.`
+                      : "Pago pela conta conjunta: não cria dívida entre vocês."}
+                  </p>
+                  <label className="remember-split">
+                    <input type="checkbox" name="rememberSplit" /> Usar esta
+                    percentagem como regra habitual
+                  </label>
                 </div>
-                <label>
-                  Parte de {d.members[0].display_name}: {firstPercent}%
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={firstPercent}
-                    onChange={(e) => setFirstPercent(Number(e.target.value))}
-                  />
-                </label>
-                <div className="split-calculation">
-                  <span>
-                    <b>Despesa da casa</b>
-                    <strong>{eur(amountPreview)}</strong>
-                  </span>
-                  <span>
-                    <b>
-                      {d.members[0].display_name} · {firstPercent}%
-                    </b>
-                    <strong>{eur(firstShare)}</strong>
-                  </span>
-                  <span>
-                    <b>
-                      {d.members[1].display_name} · {100 - firstPercent}%
-                    </b>
-                    <strong>{eur(secondShare)}</strong>
-                  </span>
-                </div>
-                <p className="split-result">
-                  {payer
-                    ? `${d.members.find((m) => m.id === payer)?.display_name} pagou. ${d.members.find((m) => m.id !== payer)?.display_name} fica com ${eur(payer === d.members[0].id ? secondShare : firstShare)} a acertar.`
-                    : "Pago pela conta conjunta: não cria dívida entre vocês."}
-                </p>
-                <label className="remember-split">
-                  <input type="checkbox" name="rememberSplit" /> Usar esta
-                  percentagem como regra habitual
-                </label>
-              </div>
+              </details>
             )}
           <label className="wide">
             Notas

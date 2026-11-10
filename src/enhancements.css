@@ -125,6 +125,19 @@
   background: #f4f8f5;
   padding: 16px;
 }
+.split-editor summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #315d4e;
+}
+.split-editor summary span {
+  float: right;
+  font-weight: 500;
+  color: #718078;
+}
+.split-editor-body {
+  margin-top: 16px;
+}
 .split-editor-head,
 .split-calculation {
   display: flex;
@@ -255,6 +268,17 @@
   color: #315d4e;
   padding: 12px 14px;
   border-radius: 10px;
+}
+.decision-strip {
+  margin-top: 12px;
+  background: #edf5f0;
+  color: #315d4e;
+  padding: 13px 15px;
+  border-radius: 10px;
+  line-height: 1.5;
+}
+.month-glance-grid .negative {
+  color: #a24f3e;
 }
 @media (max-width: 800px) {
   .split-editor-head,
