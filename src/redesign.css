@@ -253,6 +253,27 @@ body {
   padding: 8px 10px;
   background: #fff;
 }
+.cycle-shortcut {
+  display: inline-flex;
+  height: 41px;
+  align-self: flex-end;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid #cddbd3;
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.cycle-shortcut:hover {
+  background: #d6e7de;
+}
+.cycle-shortcut svg {
+  width: 16px;
+}
 .analytics-context {
   display: flex;
   align-items: center;
@@ -1024,6 +1045,10 @@ textarea {
   .analytics-filters label,
   .analytics-filters label:first-child {
     min-width: 0;
+  }
+  .cycle-shortcut {
+    grid-column: 1 / -1;
+    justify-content: center;
   }
   .analytics-context {
     align-items: flex-start;

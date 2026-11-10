@@ -8,7 +8,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ArrowDownRight, ArrowUpRight, Landmark, Scale } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  CalendarRange,
+  Landmark,
+  Scale,
+} from "lucide-react";
 import type { Account, Category, Movement } from "../types";
 import { accountBalance, eur } from "../lib/money";
 
@@ -18,12 +24,22 @@ type Props = {
   movements: Movement[];
 };
 
-const monthKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-
-const previousMonth = (month: string) => {
-  const [year, number] = month.split("-").map(Number);
-  return monthKey(new Date(year, number - 2, 1));
+const isoDate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const parseDate = (value: string) => new Date(`${value}T12:00:00`);
+const addDays = (date: Date, days: number) => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+const currentFinancialCycle = () => {
+  const today = new Date();
+  const start =
+    today.getDate() >= 25
+      ? new Date(today.getFullYear(), today.getMonth(), 25)
+      : new Date(today.getFullYear(), today.getMonth() - 1, 25);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 24);
+  return { from: isoDate(start), to: isoDate(end) };
 };
 
 const percentageChange = (current: number, previous: number) => {
@@ -36,7 +52,8 @@ export default function AnalyticsPage({
   categories,
   movements,
 }: Props) {
-  const [month, setMonth] = useState(() => monthKey(new Date()));
+  const [dateFrom, setDateFrom] = useState(() => currentFinancialCycle().from);
+  const [dateTo, setDateTo] = useState(() => currentFinancialCycle().to);
   const [accountId, setAccountId] = useState("");
 
   const accountIds = useMemo(
@@ -51,11 +68,24 @@ export default function AnalyticsPage({
     (movement) =>
       movement.status === "confirmed" && accountIds.has(movement.account_id),
   );
-  const current = confirmed.filter((movement) =>
-    movement.movement_date.startsWith(month),
+  const current = confirmed.filter(
+    (movement) =>
+      movement.movement_date >= dateFrom && movement.movement_date <= dateTo,
   );
-  const previous = confirmed.filter((movement) =>
-    movement.movement_date.startsWith(previousMonth(month)),
+  const periodStart = parseDate(dateFrom);
+  const periodEnd = parseDate(dateTo);
+  const periodDays = Math.max(
+    1,
+    Math.round((periodEnd.getTime() - periodStart.getTime()) / 86400000) + 1,
+  );
+  const previousEnd = addDays(periodStart, -1);
+  const previousStart = addDays(previousEnd, -(periodDays - 1));
+  const previousFrom = isoDate(previousStart);
+  const previousTo = isoDate(previousEnd);
+  const previous = confirmed.filter(
+    (movement) =>
+      movement.movement_date >= previousFrom &&
+      movement.movement_date <= previousTo,
   );
   const income = current
     .filter((movement) => movement.type === "income")
@@ -115,15 +145,10 @@ export default function AnalyticsPage({
     .sort((a, b) => b.amount_cents - a.amount_cents)
     .slice(0, 5);
 
-  const daysInMonth = new Date(
-    Number(month.slice(0, 4)),
-    Number(month.slice(5, 7)),
-    0,
-  ).getDate();
   let cumulative = 0;
-  const dailyData = Array.from({ length: daysInMonth }, (_, index) => {
-    const day = String(index + 1).padStart(2, "0");
-    const date = `${month}-${day}`;
+  const dailyData = Array.from({ length: periodDays }, (_, index) => {
+    const dateValue = addDays(periodStart, index);
+    const date = isoDate(dateValue);
     const dailyNet = current
       .filter((movement) => movement.movement_date === date)
       .reduce(
@@ -141,13 +166,23 @@ export default function AnalyticsPage({
         0,
       );
     cumulative += dailyNet;
-    return { day: index + 1, value: cumulative / 100 };
+    return {
+      day: new Intl.DateTimeFormat("pt-PT", {
+        day: "2-digit",
+        month: "2-digit",
+      }).format(dateValue),
+      value: cumulative / 100,
+    };
   });
 
-  const monthLabel = new Intl.DateTimeFormat("pt-PT", {
-    month: "long",
+  const rangeLabel = `${new Intl.DateTimeFormat("pt-PT", {
+    day: "numeric",
+    month: "short",
+  }).format(periodStart)} — ${new Intl.DateTimeFormat("pt-PT", {
+    day: "numeric",
+    month: "short",
     year: "numeric",
-  }).format(new Date(`${month}-01T12:00:00`));
+  }).format(periodEnd)}`;
   const scopeLabel =
     accounts.find((account) => account.id === accountId)?.name ||
     "Todas as contas";
@@ -161,11 +196,31 @@ export default function AnalyticsPage({
         </div>
         <div className="analytics-filters">
           <label>
-            <span>Mês</span>
+            <span>Desde</span>
             <input
-              type="month"
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
+              type="date"
+              value={dateFrom}
+              max={dateTo}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (!value) return;
+                setDateFrom(value);
+                if (value > dateTo) setDateTo(value);
+              }}
+            />
+          </label>
+          <label>
+            <span>Até</span>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (!value) return;
+                setDateTo(value);
+                if (value < dateFrom) setDateFrom(value);
+              }}
             />
           </label>
           <label>
@@ -182,20 +237,31 @@ export default function AnalyticsPage({
               ))}
             </select>
           </label>
+          <button
+            className="cycle-shortcut"
+            onClick={() => {
+              const cycle = currentFinancialCycle();
+              setDateFrom(cycle.from);
+              setDateTo(cycle.to);
+            }}
+          >
+            <CalendarRange />
+            Ciclo atual 25–24
+          </button>
         </div>
       </header>
 
       <section className="analytics-context">
         <div>
-          <span>{monthLabel}</span>
+          <span>{rangeLabel}</span>
           <b>{scopeLabel}</b>
         </div>
         <p>
           {expenseChange === 0
-            ? "As despesas estão ao nível do mês anterior."
+            ? "As despesas estão ao nível do período anterior."
             : expenseChange > 0
-              ? `As despesas subiram ${expenseChange}% face ao mês anterior.`
-              : `As despesas desceram ${Math.abs(expenseChange)}% face ao mês anterior.`}
+              ? `As despesas subiram ${expenseChange}% face ao período anterior.`
+              : `As despesas desceram ${Math.abs(expenseChange)}% face ao período anterior.`}
         </p>
       </section>
 
@@ -232,7 +298,7 @@ export default function AnalyticsPage({
             <Scale />
           </span>
           <div>
-            <small>Resultado do mês</small>
+            <small>Resultado do período</small>
             <strong className={result < 0 ? "negative" : "positive"}>
               {eur(result)}
             </strong>
@@ -348,8 +414,8 @@ export default function AnalyticsPage({
                 <b>Ritmo de despesa</b>
                 <small>
                   {previousExpense
-                    ? `${Math.abs(expenseChange)}% ${expenseChange > 0 ? "acima" : "abaixo"} do mês anterior.`
-                    : "Ainda sem base de comparação no mês anterior."}
+                    ? `${Math.abs(expenseChange)}% ${expenseChange > 0 ? "acima" : "abaixo"} do período anterior.`
+                    : "Ainda sem base de comparação no período anterior."}
                 </small>
               </p>
             </div>
@@ -367,7 +433,7 @@ export default function AnalyticsPage({
             <div>
               <span className={savingsRate >= 20 ? "good" : "warning"}>€</span>
               <p>
-                <b>Margem do mês</b>
+                <b>Margem do período</b>
                 <small>
                   {income
                     ? `${savingsRate}% do rendimento ficou disponível antes de transferências.`
