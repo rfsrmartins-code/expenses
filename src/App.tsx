@@ -51,6 +51,7 @@ import GoalsPage from "./pages/GoalsPage";
 import CategorySettingsPage from "./pages/SettingsPage";
 import SettlementsPage from "./pages/SettlementsPage";
 import ImportPage from "./pages/ImportPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 
 const demoMembers: Member[] = [
   {
@@ -360,6 +361,7 @@ function Shell({
   const location = useLocation();
   const nav = [
     ["/", Home, "Visão geral"],
+    ["/analises", BarChart3, "Análises"],
     ["/movimentos", ArrowLeftRight, "Movimentos"],
     ["/contas", WalletCards, "Contas"],
     ["/acertos", Scale, "Acertos"],
@@ -2007,6 +2009,16 @@ export default function App() {
         <Route
           path="/movimentos"
           element={<Movements d={data} setData={setData} reload={reload} />}
+        />
+        <Route
+          path="/analises"
+          element={
+            <AnalyticsPage
+              accounts={data.accounts}
+              categories={data.categories}
+              movements={data.movements}
+            />
+          }
         />
         <Route path="/contas" element={<Accounts d={data} reload={reload} />} />
         <Route
