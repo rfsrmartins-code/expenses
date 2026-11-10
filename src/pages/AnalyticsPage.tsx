@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   CalendarRange,
   Landmark,
+  RotateCcw,
   Scale,
 } from "lucide-react";
 import type { Account, Category, Movement } from "../types";
@@ -52,8 +53,8 @@ export default function AnalyticsPage({
   categories,
   movements,
 }: Props) {
-  const [dateFrom, setDateFrom] = useState(() => currentFinancialCycle().from);
-  const [dateTo, setDateTo] = useState(() => currentFinancialCycle().to);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [accountId, setAccountId] = useState("");
 
   const accountIds = useMemo(
@@ -70,10 +71,17 @@ export default function AnalyticsPage({
   );
   const current = confirmed.filter(
     (movement) =>
-      movement.movement_date >= dateFrom && movement.movement_date <= dateTo,
+      (!dateFrom || movement.movement_date >= dateFrom) &&
+      (!dateTo || movement.movement_date <= dateTo),
   );
-  const periodStart = parseDate(dateFrom);
-  const periodEnd = parseDate(dateTo);
+  const confirmedDates = confirmed
+    .map((movement) => movement.movement_date)
+    .sort();
+  const today = isoDate(new Date());
+  const effectiveFrom = dateFrom || confirmedDates[0] || today;
+  const effectiveTo = dateTo || confirmedDates.at(-1) || today;
+  const periodStart = parseDate(effectiveFrom);
+  const periodEnd = parseDate(effectiveTo);
   const periodDays = Math.max(
     1,
     Math.round((periodEnd.getTime() - periodStart.getTime()) / 86400000) + 1,
@@ -82,11 +90,14 @@ export default function AnalyticsPage({
   const previousStart = addDays(previousEnd, -(periodDays - 1));
   const previousFrom = isoDate(previousStart);
   const previousTo = isoDate(previousEnd);
-  const previous = confirmed.filter(
-    (movement) =>
-      movement.movement_date >= previousFrom &&
-      movement.movement_date <= previousTo,
-  );
+  const hasCompleteRange = Boolean(dateFrom && dateTo);
+  const previous = hasCompleteRange
+    ? confirmed.filter(
+        (movement) =>
+          movement.movement_date >= previousFrom &&
+          movement.movement_date <= previousTo,
+      )
+    : [];
   const income = current
     .filter((movement) => movement.type === "income")
     .reduce((total, movement) => total + movement.amount_cents, 0);
@@ -146,9 +157,14 @@ export default function AnalyticsPage({
     .slice(0, 5);
 
   let cumulative = 0;
-  const dailyData = Array.from({ length: periodDays }, (_, index) => {
-    const dateValue = addDays(periodStart, index);
-    const date = isoDate(dateValue);
+  const chartDates = hasCompleteRange
+    ? Array.from({ length: periodDays }, (_, index) =>
+        isoDate(addDays(periodStart, index)),
+      )
+    : [...new Set(current.map((movement) => movement.movement_date))].sort();
+  if (!chartDates.length) chartDates.push(today);
+  const dailyData = chartDates.map((date) => {
+    const dateValue = parseDate(date);
     const dailyNet = current
       .filter((movement) => movement.movement_date === date)
       .reduce(
@@ -175,14 +191,20 @@ export default function AnalyticsPage({
     };
   });
 
-  const rangeLabel = `${new Intl.DateTimeFormat("pt-PT", {
-    day: "numeric",
-    month: "short",
-  }).format(periodStart)} — ${new Intl.DateTimeFormat("pt-PT", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(periodEnd)}`;
+  const formatDate = (value: string, year = false) =>
+    new Intl.DateTimeFormat("pt-PT", {
+      day: "numeric",
+      month: "short",
+      ...(year ? { year: "numeric" } : {}),
+    }).format(parseDate(value));
+  const rangeLabel =
+    dateFrom && dateTo
+      ? `${formatDate(dateFrom)} — ${formatDate(dateTo, true)}`
+      : dateFrom
+        ? `Desde ${formatDate(dateFrom, true)}`
+        : dateTo
+          ? `Até ${formatDate(dateTo, true)}`
+          : "Todo o histórico";
   const scopeLabel =
     accounts.find((account) => account.id === accountId)?.name ||
     "Todas as contas";
@@ -200,12 +222,11 @@ export default function AnalyticsPage({
             <input
               type="date"
               value={dateFrom}
-              max={dateTo}
+              max={dateTo || undefined}
               onChange={(event) => {
                 const value = event.target.value;
-                if (!value) return;
                 setDateFrom(value);
-                if (value > dateTo) setDateTo(value);
+                if (value && dateTo && value > dateTo) setDateTo(value);
               }}
             />
           </label>
@@ -214,12 +235,11 @@ export default function AnalyticsPage({
             <input
               type="date"
               value={dateTo}
-              min={dateFrom}
+              min={dateFrom || undefined}
               onChange={(event) => {
                 const value = event.target.value;
-                if (!value) return;
                 setDateTo(value);
-                if (value < dateFrom) setDateFrom(value);
+                if (value && dateFrom && value < dateFrom) setDateFrom(value);
               }}
             />
           </label>
@@ -237,17 +257,31 @@ export default function AnalyticsPage({
               ))}
             </select>
           </label>
-          <button
-            className="cycle-shortcut"
-            onClick={() => {
-              const cycle = currentFinancialCycle();
-              setDateFrom(cycle.from);
-              setDateTo(cycle.to);
-            }}
-          >
-            <CalendarRange />
-            Ciclo atual 25–24
-          </button>
+          <div className="analytics-filter-shortcuts">
+            <button
+              className="cycle-shortcut"
+              onClick={() => {
+                const cycle = currentFinancialCycle();
+                setDateFrom(cycle.from);
+                setDateTo(cycle.to);
+              }}
+            >
+              <CalendarRange />
+              Ciclo 25–24
+            </button>
+            {(dateFrom || dateTo) && (
+              <button
+                className="clear-date-filter"
+                onClick={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+                aria-label="Limpar filtro de datas"
+              >
+                <RotateCcw />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -257,11 +291,13 @@ export default function AnalyticsPage({
           <b>{scopeLabel}</b>
         </div>
         <p>
-          {expenseChange === 0
-            ? "As despesas estão ao nível do período anterior."
-            : expenseChange > 0
-              ? `As despesas subiram ${expenseChange}% face ao período anterior.`
-              : `As despesas desceram ${Math.abs(expenseChange)}% face ao período anterior.`}
+          {!hasCompleteRange
+            ? "Escolhe uma data inicial e final para comparar períodos iguais."
+            : expenseChange === 0
+              ? "As despesas estão ao nível do período anterior."
+              : expenseChange > 0
+                ? `As despesas subiram ${expenseChange}% face ao período anterior.`
+                : `As despesas desceram ${Math.abs(expenseChange)}% face ao período anterior.`}
         </p>
       </section>
 
@@ -407,15 +443,25 @@ export default function AnalyticsPage({
           </div>
           <div className="decision-list">
             <div>
-              <span className={expenseChange > 0 ? "warning" : "good"}>
-                {expenseChange > 0 ? "↑" : "↓"}
+              <span
+                className={
+                  !hasCompleteRange
+                    ? "neutral"
+                    : expenseChange > 0
+                      ? "warning"
+                      : "good"
+                }
+              >
+                {!hasCompleteRange ? "–" : expenseChange > 0 ? "↑" : "↓"}
               </span>
               <p>
                 <b>Ritmo de despesa</b>
                 <small>
-                  {previousExpense
-                    ? `${Math.abs(expenseChange)}% ${expenseChange > 0 ? "acima" : "abaixo"} do período anterior.`
-                    : "Ainda sem base de comparação no período anterior."}
+                  {!hasCompleteRange
+                    ? "Seleciona as duas datas para comparar com o período anterior."
+                    : previousExpense
+                      ? `${Math.abs(expenseChange)}% ${expenseChange > 0 ? "acima" : "abaixo"} do período anterior.`
+                      : "Ainda sem base de comparação no período anterior."}
                 </small>
               </p>
             </div>
