@@ -1288,6 +1288,7 @@ function MovementModal({
   setData: (f: (x: Data) => Data) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [type, setType] = useState<Movement["type"]>(
     movement?.type || "expense",
   );
@@ -1325,6 +1326,7 @@ function MovementModal({
   const secondShare = amountPreview - firstShare;
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setSaveError("");
     setBusy(true);
     try {
       const fd = new FormData(e.currentTarget);
@@ -1412,9 +1414,16 @@ function MovementModal({
       }
       close();
     } catch (error) {
-      alert(
-        error instanceof Error ? error.message : "Não foi possível guardar.",
-      );
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === "object" &&
+              error !== null &&
+              "message" in error &&
+              typeof error.message === "string"
+            ? error.message
+            : "Não foi possível guardar o movimento.";
+      setSaveError(message);
     } finally {
       setBusy(false);
     }
@@ -1432,6 +1441,7 @@ function MovementModal({
           {movement ? "EDITAR REGISTO" : "REGISTO RÁPIDO"}
         </div>
         <h2>{movement ? "Editar movimento" : "Novo movimento"}</h2>
+        {saveError && <div className="error">{saveError}</div>}
         {!d.accounts.length && (
           <div className="notice">Cria primeiro uma conta.</div>
         )}

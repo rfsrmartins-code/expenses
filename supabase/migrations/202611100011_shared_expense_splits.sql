@@ -76,11 +76,11 @@ begin
 
   if p_movement is null then
     insert into public.movements(household_id,account_id,description,amount_cents,movement_date,type,scope,category_id,expense_owner_id,paid_by_member_id,notes,status,created_by)
-    values(h,p_account,btrim(p_description),p_amount,p_date,'expense',p_scope,p_category,case when p_scope='personal' then p_owner end,p_payer,nullif(btrim(coalesce(p_notes,'')),''),'confirmed',uid)
+    values(h,p_account,btrim(p_description),p_amount,p_date,'expense',p_scope::public.expense_scope,p_category,case when p_scope='personal' then p_owner end,p_payer,nullif(btrim(coalesce(p_notes,'')),''),'confirmed',uid)
     returning id into mid;
   else
     if not exists(select 1 from public.movements where id=p_movement and household_id=h and transfer_id is null) then raise exception 'Movimento inválido'; end if;
-    update public.movements set account_id=p_account,description=btrim(p_description),amount_cents=p_amount,movement_date=p_date,type='expense',scope=p_scope,category_id=p_category,expense_owner_id=case when p_scope='personal' then p_owner end,paid_by_member_id=p_payer,notes=nullif(btrim(coalesce(p_notes,'')),''),updated_at=now(),updated_by=uid where id=p_movement;
+    update public.movements set account_id=p_account,description=btrim(p_description),amount_cents=p_amount,movement_date=p_date,type='expense',scope=p_scope::public.expense_scope,category_id=p_category,expense_owner_id=case when p_scope='personal' then p_owner end,paid_by_member_id=p_payer,notes=nullif(btrim(coalesce(p_notes,'')),''),updated_at=now(),updated_by=uid where id=p_movement;
     mid:=p_movement;
     delete from public.expense_splits where movement_id=mid;
   end if;
